@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argocd-task.fullname" . }}-html
+  labels:
+    {{- include "argocd-task.labels" . | nindent 4 }}
+data:
+  index.html: |-
+    {{- tpl (.Files.Get "files/index.html.tpl") . | nindent 4 }}

@@ -1,0 +1,13 @@
+{{- if .Values.tls.caConfigMap.enabled -}}
+# Public certificate of "ArgoCD Local CA" (no private key). Clients in this namespace
+# mount it to verify the app's server certificate.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argocd-task.fullname" . }}-ca
+  labels:
+    {{- include "argocd-task.labels" . | nindent 4 }}
+data:
+  ca.crt: |-
+    {{- .Files.Get "files/ca.crt" | trim | nindent 4 }}
+{{- end }}

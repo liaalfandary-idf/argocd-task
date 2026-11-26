@@ -1,0 +1,23 @@
+{{- if .Values.ingressRouteTCP.enabled -}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: {{ include "argocd-task.fullname" . }}
+  labels:
+    {{- include "argocd-task.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - {{ .Values.ingressRouteTCP.entryPoint }}
+  routes:
+    {{- $sni := list }}
+    {{- range .Values.hosts }}
+    {{- $sni = append $sni (printf "HostSNI(`%s`)" .) }}
+    {{- end }}
+    - match: {{ join " || " $sni }}
+      services:
+        - name: {{ include "argocd-task.fullname" . }}
+          port: {{ .Values.service.port }}
+  # Traefik routes on SNI only; the encrypted stream goes untouched to nginx
+  tls:
+    passthrough: true
+{{- end }}

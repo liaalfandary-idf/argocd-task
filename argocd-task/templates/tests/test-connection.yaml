@@ -2,14 +2,50 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: "{{ include "argocd-task.fullname" . }}-test-connection"
+  # Deliberately NOT the chart's selector labels, so the app's NetworkPolicy and
+  # Service don't treat this pod as the app
   labels:
-    {{- include "argocd-task.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    {{ include "argocd-task.fullname" . }}-client: "true"
   annotations:
     "helm.sh/hook": test
 spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
   containers:
-    - name: wget
-      image: busybox
-      command: ['wget']
-      args: ['{{ include "argocd-task.fullname" . }}:{{ .Values.service.port }}']
+    - name: curl
+      image: curlimages/curl:8.17.0
+      # Full certificate verification against ArgoCD Local CA, by Service DNS name
+      # and by the public hostname
+      command: ["sh", "-c"]
+      args:
+        - >-
+          set -e;
+          curl -fsS --cacert /etc/ca/ca.crt -o /dev/null
+          https://{{ include "argocd-task.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/ &&
+          {{- range .Values.hosts }}
+          curl -fsS --cacert /etc/ca/ca.crt -o /dev/null
+          --connect-to {{ . }}:{{ $.Values.service.port }}:{{ include "argocd-task.fullname" $ }}:{{ $.Values.service.port }}
+          https://{{ . }}:{{ $.Values.service.port }}/ &&
+          {{- end }}
+          echo "TLS verified against ArgoCD Local CA"
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+      volumeMounts:
+        - name: ca
+          mountPath: /etc/ca
+          readOnly: true
+  volumes:
+    - name: ca
+      configMap:
+        name: {{ include "argocd-task.fullname" . }}-ca
   restartPolicy: Never
