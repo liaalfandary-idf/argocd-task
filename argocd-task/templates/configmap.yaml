@@ -7,3 +7,5 @@ metadata:
 data:
   index.html: |-
     {{- tpl (.Files.Get "files/index.html.tpl") . | nindent 4 }}
+  styles.css: |-
+    {{- tpl (.Files.Get "files/styles.css.tpl") . | nindent 4 }}
