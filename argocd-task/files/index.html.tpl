@@ -10,9 +10,7 @@
   <body>
     <main class="page">
       <header class="hero">
-        <p class="eyebrow">{{ len .Values.subjects }} greetings</p>
         <h1>{{ .Values.page.title | html }}</h1>
-        <p class="lede">Rendered by Helm, deployed by Argo CD, served by nginx over HTTPS.</p>
       </header>
 
       <ul class="grid">
