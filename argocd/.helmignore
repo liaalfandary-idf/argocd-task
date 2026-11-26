@@ -1,0 +1,2 @@
+# Argo CD Application manifests (applied with kubectl, not part of the chart)
+applications/

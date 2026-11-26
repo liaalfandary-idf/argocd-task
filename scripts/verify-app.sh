@@ -18,15 +18,27 @@ check() { local desc="$1"; shift; if "$@" >/dev/null 2>&1; then pass "$desc"; el
 section() { printf '\n\e[1m== %s\e[0m\n' "$1"; }
 C() { curl -s --max-time 8 --cacert "$CA" "$@"; }
 
-# Restricted-compliant throwaway pod; $1 = name, $2 = extra labels JSON, $3 = curl args JSON array
+# Restricted-compliant throwaway pod; $1 = name, $2 = extra labels JSON, $3 = curl args JSON array.
+# Prints the pod's log. The pod is run to completion and its log read afterwards: attaching with
+# `kubectl run -i` can miss the output of a short-lived pod and make a check fail falsely.
 run_pod() {
-  kubectl run "$1" -n "$NS" --rm -i --restart=Never --image="$CURL_IMAGE" --pod-running-timeout=90s \
+  kubectl delete pod "$1" -n "$NS" --ignore-not-found --wait=true >/dev/null 2>&1
+  kubectl run "$1" -n "$NS" --restart=Never --image="$CURL_IMAGE" \
     --overrides="{\"metadata\":{\"labels\":$2},\"spec\":{\"automountServiceAccountToken\":false,
       \"securityContext\":{\"runAsNonRoot\":true,\"runAsUser\":65532,\"seccompProfile\":{\"type\":\"RuntimeDefault\"}},
       \"containers\":[{\"name\":\"$1\",\"image\":\"$CURL_IMAGE\",\"args\":$3,
         \"securityContext\":{\"allowPrivilegeEscalation\":false,\"readOnlyRootFilesystem\":true,\"capabilities\":{\"drop\":[\"ALL\"]}},
         \"volumeMounts\":[{\"name\":\"ca\",\"mountPath\":\"/etc/ca\",\"readOnly\":true}]}],
-      \"volumes\":[{\"name\":\"ca\",\"configMap\":{\"name\":\"$NAME-ca\"}}]}}" 2>/dev/null
+      \"volumes\":[{\"name\":\"ca\",\"configMap\":{\"name\":\"$NAME-ca\"}}]}}" >/dev/null 2>&1
+  # Wait until the pod has finished (Succeeded or Failed), up to 2 minutes
+  for _ in $(seq 1 60); do
+    case "$(kubectl get pod "$1" -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null)" in
+      Succeeded|Failed) break ;;
+    esac
+    sleep 2
+  done
+  kubectl logs "$1" -n "$NS" 2>/dev/null
+  kubectl delete pod "$1" -n "$NS" --ignore-not-found --wait=false >/dev/null 2>&1
 }
 
 # ---------------------------------------------------------------------------
@@ -119,8 +131,9 @@ section "6. Network policy + in-cluster TLS (throwaway pods, ~1 min)"
 OUT=$(run_pod verify-blocked '{}' "[\"-sk\",\"--max-time\",\"5\",\"-o\",\"/dev/null\",\"-w\",\"code=%{http_code}\",\"https://$NAME.$NS.svc/\"]")
 check "Unauthorised pod in the namespace is blocked" grep -q "code=000" <<< "$OUT"
 FIRST=$(echo $HOSTS | awk '{print $1}')
+# Retries: the first connection through the network policy can be slow (~1 s) on this CNI
 OUT=$(run_pod verify-client "{\"$NAME-client\":\"true\"}" \
-  "[\"-sS\",\"--max-time\",\"8\",\"--cacert\",\"/etc/ca/ca.crt\",\"-o\",\"/dev/null\",\"-w\",\"svc=%{http_code} \",\"https://$NAME.$NS.svc/\",
+  "[\"-sS\",\"--max-time\",\"8\",\"--retry\",\"5\",\"--retry-delay\",\"2\",\"--retry-all-errors\",\"--cacert\",\"/etc/ca/ca.crt\",\"-o\",\"/dev/null\",\"-w\",\"svc=%{http_code} \",\"https://$NAME.$NS.svc/\",
     \"--connect-to\",\"$FIRST:443:$NAME.$NS.svc:443\",\"https://$FIRST/\"]")
 check "Allowed client verifies TLS by Service DNS name (CA from ConfigMap)" grep -q "svc=200" <<< "$OUT"
 check "Allowed client verifies TLS by public hostname" sh -c "printf '%s' \"\$1\" | grep -o 'svc=200' | wc -l | grep -qx 2" _ "$OUT"

@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: lia-temp-page
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # deleting the app deletes its resources
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:liaalfandary-idf/argocd-task.git
+    targetRevision: main
+    path: charts/web-application
+    helm:
+      releaseName: lia-temp-page
+      valueFiles:              # relative to `path`; later files override earlier ones
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: lia-temp-page
+  syncPolicy:
+    automated:
+      prune: true              # delete resources removed from Git
+      selfHeal: true           # undo manual changes in the cluster
+    syncOptions:
+      - CreateNamespace=true
+    managedNamespaceMetadata:  # keeps the Pod Security labels managed from Git
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted

@@ -1,0 +1,2 @@
+# Helm dependency archives: rebuilt from Chart.lock with `helm dependency build`
+argocd/charts/*.tgz

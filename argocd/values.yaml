@@ -1,0 +1,87 @@
+# Local extras rendered by this chart's own templates
+local:
+  hostname: argocd.localhost
+  # Allow CoreDNS replies into argocd pods (works around kindnet dropping them)
+  dnsPolicy:
+    enabled: true
+  # Allow replies into pods whose ingress is restricted (works around kindnet
+  # dropping return traffic). Keys are target pods, values are the peers they
+  # open connections to.
+  replyPolicies:
+    enabled: true
+    peerReplies:
+      argocd-application-controller: [argocd-repo-server, argocd-redis]
+      argocd-repo-server: [argocd-redis]
+      argocd-notifications-controller: [argocd-repo-server]
+    # Replies from outside the pod network (GitHub, Helm repos, OIDC, webhooks).
+    # Pod and service ranges are excluded so pod-to-pod rules stay in force.
+    externalReplies:
+      targets:
+        - argocd-repo-server
+        - argocd-dex-server
+        - argocd-notifications-controller
+      excludeCIDRs:
+        - 10.244.0.0/16
+        - 10.96.0.0/16
+  # Traefik IngressRouteTCP with TLS passthrough to argocd-server
+  ingressRoute:
+    enabled: true
+    entryPoint: websecure
+
+# Values for the official argo/argo-cd chart
+argo-cd:
+  fullnameOverride: argocd
+
+  crds:
+    install: true
+    keep: true
+
+  global:
+    domain: argocd.localhost
+    networkPolicy:
+      create: true
+
+  configs:
+    params:
+      # Strict TLS between components (TLS guide, "Inter-component TLS")
+      server.repo.server.strict.tls: true
+      controller.repo.server.strict.tls: true
+      server.dex.server.strict.tls: true
+      # ApplicationSet controller also talks to repo-server (not covered by the 2.5 guide)
+      applicationsetcontroller.repo.server.strict.tls: true
+    secret:
+      createSecret: true
+
+  controller:
+    metrics:
+      enabled: true
+
+  notifications:
+    metrics:
+      enabled: true
+
+  server:
+    service:
+      type: LoadBalancer
+    metrics:
+      enabled: true
+    # argocd-server-tls is created outside the chart from ~/argocd-tls
+    certificateSecret:
+      enabled: false
+
+  repoServer:
+    # argocd-repo-server-tls is created outside the chart from ~/argocd-tls
+    certificateSecret:
+      enabled: false
+
+  dex:
+    image:
+      tag: v2.46.0
+    # argocd-dex-server-tls is created outside the chart from ~/argocd-tls
+    certificateSecret:
+      enabled: false
+
+  redis:
+    image:
+      repository: public.ecr.aws/docker/library/redis
+      tag: 8.10.1-alpine

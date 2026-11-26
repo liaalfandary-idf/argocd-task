@@ -1,0 +1,17 @@
+{{- if .Values.local.ingressRoute.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: argocd-server
+  namespace: {{ .Release.Namespace }}
+spec:
+  entryPoints:
+    - {{ .Values.local.ingressRoute.entryPoint }}
+  routes:
+    - match: HostSNI(`{{ .Values.local.hostname }}`)
+      services:
+        - name: argocd-server
+          port: 443
+  tls:
+    passthrough: true
+{{- end }}

@@ -1,0 +1,57 @@
+{{- /*
+Additive NetworkPolicies that let replies back into Argo CD pods.
+
+kind's built-in network plugin (kindnet) does not reliably allow return traffic
+for pods whose ingress is restricted, so connections those pods open (to redis,
+repo-server, GitHub, ...) never see their replies. Each rule below only admits
+traffic from a peer the pod already connects to. The official chart's policies
+are left untouched; NetworkPolicies are additive, so these only add exceptions.
+*/ -}}
+{{- with .Values.local.replyPolicies }}
+{{- if .enabled }}
+{{- range $target, $peers := .peerReplies }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-replies-to-{{ $target | trimPrefix "argocd-" }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $target }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- range $peers }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if .externalReplies.targets }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-replies
+  namespace: {{ $.Release.Namespace }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          {{- toYaml .externalReplies.targets | nindent 10 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              {{- toYaml .externalReplies.excludeCIDRs | nindent 14 }}
+{{- end }}
+{{- end }}
+{{- end }}

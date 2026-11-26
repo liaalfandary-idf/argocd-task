@@ -1,0 +1,10 @@
+apiVersion: v2
+name: argocd-local
+description: Argo CD for the local kind cluster, wrapping the official argo-cd chart plus local extras (DNS policy, Traefik ingress).
+type: application
+version: 0.1.0
+appVersion: "v3.6.3"
+dependencies:
+  - name: argo-cd
+    version: 10.20.0
+    repository: https://argoproj.github.io/argo-helm
